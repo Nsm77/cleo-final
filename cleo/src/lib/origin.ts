@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { IS_PRODUCTION, SITE_URL } from "./env";
+import { env, IS_PRODUCTION, SITE_URL } from "./env";
 
 /**
  * Defence-in-depth origin check for state-changing Server Actions.
@@ -44,7 +44,30 @@ export async function checkOrigin(): Promise<boolean> {
   return allowed.has(originHost.toLowerCase());
 }
 
+/**
+ * Stable per-client key for the rate limiter.
+ *
+ * Forwarded headers are only honoured when `TRUST_PROXY` is set, and then read
+ * from the RIGHT of the `x-forwarded-for` chain: every proxy appends the address
+ * it received the request from, so the left-most entries are client-supplied and
+ * trivially spoofable. Counting back `TRUST_PROXY_HOPS` entries lands on the
+ * address our own proxy recorded.
+ *
+ * Untrusted, every caller collapses to `"local"` — one shared bucket. That is a
+ * deliberate trade: a global limiter degrades availability, whereas trusting the
+ * header silently hands out unlimited attempts to anyone who sets it.
+ */
 export async function clientKey(): Promise<string> {
   const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "local";
+  if (!env.TRUST_PROXY) return "local";
+
+  const chain = (h.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (chain.length) {
+    const idx = Math.max(0, chain.length - env.TRUST_PROXY_HOPS);
+    return chain[idx];
+  }
+  return h.get("x-real-ip")?.trim() || "local";
 }

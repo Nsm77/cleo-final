@@ -8,7 +8,7 @@ import { fail, MESSAGES, ok, zodFieldErrors, type ActionResult } from "@/lib/api
 import { evaluatePromo } from "@/lib/promotions";
 import { rateLimit } from "@/lib/rate-limit";
 import { clientKey } from "@/lib/origin";
-import { newsletterSchema, reviewSchema, ticketSchema } from "@/lib/validation";
+import { cartLineSchema, newsletterSchema, reviewSchema, ticketSchema } from "@/lib/validation";
 import { track } from "@/lib/orders";
 
 export async function toggleWishlistAction(productId: number): Promise<ActionResult<{ wished: boolean }>> {
@@ -47,8 +47,16 @@ export async function submitReviewAction(_prev: ActionResult | null, form: FormD
 export async function validatePromoAction(code: string, lines: { productId: number; quantity: number }[]): Promise<ActionResult<{ discount: number; freeShipping: boolean; label: string; code: string }>> {
   if (!(await rateLimit(`promo:${await clientKey()}`, 20, 60_000))) return fail(MESSAGES.rateLimited);
   const me = await getCurrentUser();
+  if (!Array.isArray(lines) || !lines.length) return fail("Votre panier est vide.");
+  if (lines.length > 100) return fail("Panier trop volumineux.");
+  // `lines` is client-supplied. Prices are always re-read from the database below,
+  // but an unchecked quantity would still let a caller quote a nonsense discount
+  // (or an absurd `IN (...)` list), so validate against the same bounds the cart
+  // itself uses.
+  for (const l of lines) {
+    if (!cartLineSchema.safeParse(l).success) return fail(MESSAGES.invalid);
+  }
   const ids = lines.map((l) => l.productId);
-  if (!ids.length) return fail("Votre panier est vide.");
   const rows = await db.select({ id: products.id, price: products.priceMillimes, universeId: products.universeId }).from(products).where(and(inArray(products.id, ids), eq(products.status, "active")));
   const promoLines = lines.map((l) => { const p = rows.find((r) => r.id === l.productId); return { productId: l.productId, universeId: p?.universeId ?? null, lineTotal: (p?.price ?? 0) * l.quantity }; });
   const res = await evaluatePromo(code, promoLines, me?.id);
@@ -57,6 +65,9 @@ export async function validatePromoAction(code: string, lines: { productId: numb
 }
 
 export async function subscribeNewsletterAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  // Public, unauthenticated write. Without a limiter this is a free way to fill
+  // the subscriber table; the unique email only dedupes identical addresses.
+  if (!(await rateLimit(`newsletter:${await clientKey()}`, 5, 3_600_000))) return fail(MESSAGES.rateLimited);
   const parsed = newsletterSchema.safeParse({ email: form.get("email") });
   if (!parsed.success) return fail("Adresse e-mail invalide.");
   await db.insert(newsletterSubscribers).values({ email: parsed.data.email }).onConflictDoNothing();
@@ -75,6 +86,10 @@ export async function createTicketAction(_prev: ActionResult | null, form: FormD
 export async function logSearchAction(query: string, resultsCount: number) {
   const q = query.trim().slice(0, 200);
   if (q.length < 2) return;
+  // One row per call on a public endpoint: without a limiter a single client can
+  // grow `search_events` without bound. Over budget the analytics event is simply
+  // dropped — search itself is unaffected.
+  if (!(await rateLimit(`search:${await clientKey()}`, 30, 60_000))) return;
   const me = await getCurrentUser();
   try { await db.insert(searchEvents).values({ query: q.toLowerCase(), resultsCount, userId: me?.id ?? null }); } catch {}
 }

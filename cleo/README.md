@@ -38,6 +38,8 @@ Codes promo : `BIENVENUE10` (−10 % dès 50 DT), `SOLAIRE15` (−15 % univers S
 | Variable | Rôle |
 |----------|------|
 | `SESSION_SECRET` | **Obligatoire en production** (≥ 32 caractères). L'application refuse de démarrer si la variable est absente, trop courte ou égale à une valeur d'exemple. |
+| `TRUST_PROXY` | `true` uniquement si l'application tourne derrière un reverse proxy/CDN qui pose `x-forwarded-for`. Sans cette variable, les en-têtes transmis sont **ignorés** : ils sont contrôlables par le client et permettaient de contourner tous les limiteurs de débit en les faisant tourner à chaque requête. Désactivée, tous les visiteurs partagent un seul compartiment — un avertissement est journalisé au démarrage en production. |
+| `TRUST_PROXY_HOPS` | Nombre de proxys de confiance entre le client et l'application (défaut `1`). La lecture se fait **depuis la droite** de la chaîne `x-forwarded-for`, là où les valeurs ne sont pas falsifiables. |
 | `PAYMENT_METHODS_ENABLED` | Sous-ensemble de `cod,bank_transfer,card,gift_card`. Défaut : `cod,bank_transfer,gift_card`. `card` est refusé par le serveur tant qu'aucune intégration réelle n'existe. |
 | `SEED_ADMIN_PASSWORD` / `SEED_SUPPORT_PASSWORD` / `SEED_CLIENT_PASSWORD` | Mots de passe du seed. Les valeurs du tableau ci-dessus ne sont utilisées **qu'en développement**. |
 | `ALLOW_DESTRUCTIVE_SEED` | `npm run db:seed` effectue un `TRUNCATE … CASCADE`. Avec `NODE_ENV=production`, le script s'arrête immédiatement sauf si cette variable vaut `1` (et les mots de passe ci-dessus sont alors exigés). |
