@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes, scrypt as _scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { cookies } from "next/headers";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "@/db";
 import { sessions, users, type User } from "@/db/schema";
@@ -37,6 +37,22 @@ export async function createSession(userId: number, userAgent?: string | null) {
     expires: expiresAt,
     path: "/",
   });
+  void pruneExpiredSessions();
+}
+
+/**
+ * Sessions are validated by expiry on read but were never deleted, so the table
+ * grew forever. Prune opportunistically (at most once a minute per process) so
+ * no separate cron job is required.
+ */
+let lastPrune = 0;
+async function pruneExpiredSessions() {
+  const now = Date.now();
+  if (now - lastPrune < 60_000) return;
+  lastPrune = now;
+  try {
+    await db.delete(sessions).where(lte(sessions.expiresAt, new Date()));
+  } catch { /* best effort — never block a login */ }
 }
 
 export async function destroySession() {

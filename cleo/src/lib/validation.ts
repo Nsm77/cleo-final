@@ -112,3 +112,6 @@ export const ticketSchema = z.object({
 
 export const newsletterSchema = z.object({ email });
 export const orderStatusSchema = z.enum(["pending", "confirmed", "preparing", "shipped", "delivered", "cancelled", "returned"]);
+// Server-action arguments are attacker-controlled regardless of their TS type,
+// so enum-shaped inputs are validated before they reach the database.
+export const userRoleSchema = z.enum(["customer", "support", "admin"]);

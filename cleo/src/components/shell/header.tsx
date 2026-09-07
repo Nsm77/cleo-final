@@ -42,7 +42,10 @@ export function Header({ universes, user, wishlistCount }: { universes: NavUnive
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduce = useReducedMotion();
 
-  useEffect(() => { setMenuOpen(false); setMega(null); setAcct(false); }, [pathname]);
+  // Close the overlays when the route changes. Done during render (React's
+  // "adjusting state when a prop changes" pattern) rather than in an effect.
+  const [prevPath, setPrevPath] = useState(pathname);
+  if (prevPath !== pathname) { setPrevPath(pathname); setMenuOpen(false); setMega(null); setAcct(false); }
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();

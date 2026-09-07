@@ -6,7 +6,7 @@ import { articles, orders, productConcerns, products, promotions, reviews, store
 import { requireAdmin, requireStaff } from "@/lib/auth";
 import { fail, MESSAGES, ok, zodFieldErrors, type ActionResult } from "@/lib/api";
 import { ALLOWED_TRANSITIONS, addOrderEvent, audit, awardLoyaltyForOrder, lockOrder, lockProducts, recordMovement, restockOrder, reverseLoyaltyForOrder } from "@/lib/orders";
-import { orderStatusSchema, productSchema, promotionSchema, stockAdjustSchema } from "@/lib/validation";
+import { orderStatusSchema, productSchema, promotionSchema, stockAdjustSchema, userRoleSchema } from "@/lib/validation";
 import { slugify } from "@/lib/utils";
 
 async function staff() {
@@ -55,7 +55,14 @@ export async function updateOrderStatusAction(orderId: number, next: string, mes
   }
 }
 
+const BULK_LIMIT = 100;
+
 export async function bulkOrderStatusAction(ids: number[], next: string): Promise<ActionResult<{ done: number }>> {
+  const me = await staff();
+  if (!me) return fail(MESSAGES.forbidden);
+  if (!Array.isArray(ids)) return fail(MESSAGES.invalid);
+  // Each id costs a locked transaction; an unbounded array is a cheap DoS.
+  if (ids.length > BULK_LIMIT) return fail(`Maximum ${BULK_LIMIT} commandes à la fois.`);
   let done = 0;
   for (const id of ids) {
     const r = await updateOrderStatusAction(id, next);
@@ -182,11 +189,14 @@ export async function deletePromotionAction(id: number): Promise<ActionResult> {
 export async function moderateReviewAction(id: number, status: "approved" | "rejected", reply?: string): Promise<ActionResult> {
   const me = await staff();
   if (!me) return fail(MESSAGES.forbidden);
-  const [r] = await db.update(reviews).set({ status, reply: reply?.trim() || null, updatedAt: new Date() }).where(eq(reviews.id, id)).returning();
-  if (r) {
-    const agg = await db.select({ avg: sql<number>`coalesce(round(avg(rating)*100),0)::int`, n: sql<number>`count(*)::int` }).from(reviews).where(sql`${reviews.productId} = ${r.productId} AND ${reviews.status} = 'approved'`);
-    await db.update(products).set({ ratingAvg: agg[0]?.avg ?? 0, ratingCount: agg[0]?.n ?? 0 }).where(eq(products.id, r.productId));
-  }
+  // Status change and rating re-aggregation must commit together, otherwise a
+  // failure in between leaves products.rating_avg out of sync with the reviews.
+  await db.transaction(async (tx) => {
+    const [r] = await tx.update(reviews).set({ status, reply: reply?.trim() || null, updatedAt: new Date() }).where(eq(reviews.id, id)).returning();
+    if (!r) return;
+    const agg = await tx.select({ avg: sql<number>`coalesce(round(avg(rating)*100),0)::int`, n: sql<number>`count(*)::int` }).from(reviews).where(sql`${reviews.productId} = ${r.productId} AND ${reviews.status} = 'approved'`);
+    await tx.update(products).set({ ratingAvg: agg[0]?.avg ?? 0, ratingCount: agg[0]?.n ?? 0 }).where(eq(products.id, r.productId));
+  });
   await audit(me.id, "review.moderate", "review", id, { status });
   revalidatePath("/admin/avis");
   return ok(undefined, status === "approved" ? "Avis publié." : "Avis rejeté.");
@@ -224,8 +234,13 @@ export async function saveStoreAction(_prev: ActionResult | null, form: FormData
   const id = Number(form.get("id") || 0);
   const v = { name: String(form.get("name") || ""), slug: String(form.get("slug") || slugify(String(form.get("name") || ""))), address: String(form.get("address") || ""), city: String(form.get("city") || ""), phone: String(form.get("phone") || ""), hours: String(form.get("hours") || ""), mapsUrl: String(form.get("mapsUrl") || "") || null, isActive: form.get("isActive") === "on" };
   if (v.name.length < 2 || v.address.length < 3 || v.phone.length < 8) return fail("Champs obligatoires manquants.");
-  if (id) await db.update(stores).set({ ...v, updatedAt: new Date() }).where(eq(stores.id, id));
-  else await db.insert(stores).values(v);
+  try {
+    if (id) await db.update(stores).set({ ...v, updatedAt: new Date() }).where(eq(stores.id, id));
+    else await db.insert(stores).values(v);
+  } catch {
+    // stores.slug is unique; report it instead of leaking a driver error.
+    return fail("Une boutique utilise déjà cet identifiant (slug).");
+  }
   revalidatePath("/boutiques"); revalidatePath("/admin/boutiques");
   return ok(undefined, "Boutique enregistrée.");
 }
@@ -233,16 +248,24 @@ export async function saveStoreAction(_prev: ActionResult | null, form: FormData
 export async function updateUserRoleAction(userId: number, role: "customer" | "support" | "admin"): Promise<ActionResult> {
   const me = await adminOnly();
   if (!me) return fail(MESSAGES.forbidden);
+  // The declared type is not a runtime guarantee: validate, otherwise a bad value
+  // reaches the Postgres enum and surfaces as an unhandled driver error.
+  const parsedRole = userRoleSchema.safeParse(role);
+  if (!parsedRole.success) return fail("Rôle invalide.");
+  if (!Number.isInteger(userId) || userId <= 0) return fail(MESSAGES.invalid);
   if (me.id === userId) return fail("Vous ne pouvez pas modifier votre propre rôle.");
-  await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
-  await audit(me.id, "user.role", "user", userId, { role });
+  const updated = await db.update(users).set({ role: parsedRole.data, updatedAt: new Date() }).where(eq(users.id, userId)).returning({ id: users.id });
+  if (!updated.length) return fail(MESSAGES.notFound);
+  await audit(me.id, "user.role", "user", userId, { role: parsedRole.data });
   revalidatePath("/admin/clients");
   return ok(undefined, "Rôle mis à jour.");
 }
 export async function saveCustomerNoteAction(userId: number, notes: string): Promise<ActionResult> {
   const me = await staff();
   if (!me) return fail(MESSAGES.forbidden);
-  await db.update(users).set({ notes: notes.slice(0, 2000) || null }).where(eq(users.id, userId));
+  if (!Number.isInteger(userId) || userId <= 0) return fail(MESSAGES.invalid);
+  const updated = await db.update(users).set({ notes: notes.slice(0, 2000) || null }).where(eq(users.id, userId)).returning({ id: users.id });
+  if (!updated.length) return fail(MESSAGES.notFound);
   revalidatePath(`/admin/clients/${userId}`);
   return ok(undefined, "Note enregistrée.");
 }

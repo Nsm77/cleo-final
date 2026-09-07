@@ -14,15 +14,20 @@ import { track } from "@/lib/orders";
 export async function toggleWishlistAction(productId: number): Promise<ActionResult<{ wished: boolean }>> {
   const me = await getCurrentUser();
   if (!me) return fail(MESSAGES.unauthorized);
-  const ex = await db.select().from(wishlistItems).where(and(eq(wishlistItems.userId, me.id), eq(wishlistItems.productId, productId))).limit(1);
-  if (ex.length) {
-    await db.delete(wishlistItems).where(and(eq(wishlistItems.userId, me.id), eq(wishlistItems.productId, productId)));
-    revalidatePath("/compte/favoris");
-    return ok({ wished: false }, "Retiré de vos favoris.");
-  }
-  await db.insert(wishlistItems).values({ userId: me.id, productId });
-  await track("wishlist.add", { productId }, me.id);
+  if (!Number.isInteger(productId) || productId <= 0) return fail(MESSAGES.invalid);
+  const [p] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), eq(products.status, "active"))).limit(1);
+  if (!p) return fail(MESSAGES.notFound);
+  /*
+   * Atomic toggle. The DELETE is the single arbiter of who owned the row, so two
+   * concurrent clicks can no longer both take the "insert" branch: previously
+   * that hit the (user_id, product_id) primary key and surfaced as a 500, and
+   * the item ended up not saved at all.
+   */
+  const removed = await db.delete(wishlistItems).where(and(eq(wishlistItems.userId, me.id), eq(wishlistItems.productId, p.id))).returning({ productId: wishlistItems.productId });
   revalidatePath("/compte/favoris");
+  if (removed.length) return ok({ wished: false }, "Retiré de vos favoris.");
+  await db.insert(wishlistItems).values({ userId: me.id, productId: p.id }).onConflictDoNothing();
+  await track("wishlist.add", { productId: p.id }, me.id);
   return ok({ wished: true }, "Ajouté à vos favoris.");
 }
 
@@ -31,6 +36,10 @@ export async function submitReviewAction(_prev: ActionResult | null, form: FormD
   const me = await getCurrentUser();
   const parsed = reviewSchema.safeParse({ productId: Number(form.get("productId")), rating: Number(form.get("rating")), title: form.get("title"), body: form.get("body"), authorName: form.get("authorName") || (me ? `${me.firstName} ${me.lastName[0]}.` : "") });
   if (!parsed.success) return fail(MESSAGES.invalid, zodFieldErrors(parsed.error.issues));
+  // Reject unknown products up front: otherwise the foreign key raises and the
+  // caller gets an opaque failure instead of a usable message.
+  const [target] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, parsed.data.productId), eq(products.status, "active"))).limit(1);
+  if (!target) return fail(MESSAGES.notFound);
   await db.insert(reviews).values({ ...parsed.data, title: parsed.data.title || null, userId: me?.id ?? null, status: "pending" });
   return ok(undefined, "Merci ! Votre avis sera publié après modération.");
 }

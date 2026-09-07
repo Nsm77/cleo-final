@@ -14,6 +14,8 @@ export default async function AdminDashboard() {
   // alongside it, so an anonymous request would otherwise dereference null.
   const user = await getCurrentUser();
   if (!user) redirect("/connexion?next=/admin");
+  // This is a force-dynamic Server Component; Date.now() drives the rolling 30-day window.
+  // eslint-disable-next-line react-hooks/purity
   const since = new Date(Date.now() - 30 * 86_400_000);
   const [kpiRow, pendingRow, recent, low, pendingRow2, ticketsRow, lowRow] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int`, rev: sql<number>`coalesce(sum(total_millimes) filter (where status <> 'cancelled'),0)::int`, avg: sql<number>`coalesce(avg(total_millimes) filter (where status <> 'cancelled'),0)::int` }).from(orders).where(gte(orders.createdAt, since)),
@@ -29,7 +31,10 @@ export default async function AdminDashboard() {
   const attention = pendingCount.n + pendingReviews.n + openTickets.n + lowCount.n;
   const isAdmin = user.role === "admin";
   return (
-    <AdminPage eyebrow={`Bonjour ${user.firstName} · ${date}`} title="Vue d'ensemble" sub="Ce qui se passe dans la maison, en un regard." action={<a href="/api/admin/export/orders" className={abtnGhost}><DownloadIcon size={13} /> Exporter les commandes</a>}>
+    <AdminPage eyebrow={`Bonjour ${user.firstName} · ${date}`} title="Vue d'ensemble" sub="Ce qui se passe dans la maison, en un regard." action={
+      // CSV Route Handler (Content-Disposition: attachment), not a page.
+      // eslint-disable-next-line @next/next/no-html-link-for-pages
+      <a href="/api/admin/export/orders" className={abtnGhost}><DownloadIcon size={13} /> Exporter les commandes</a>}>
       {/* Quick actions */}
       <div className="mb-8 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.2em] text-admin-muted">Actions rapides</span>
@@ -82,7 +87,7 @@ export default async function AdminDashboard() {
               ))}
             </ul>
           )}
-          <Link href="/admin/stock" className="block border-t border-admin-border px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-admin-gold transition-colors hover:bg-admin-panel-2">Gérer l'inventaire →</Link>
+          <Link href="/admin/stock" className="block border-t border-admin-border px-5 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-admin-gold transition-colors hover:bg-admin-panel-2">Gérer l&apos;inventaire →</Link>
         </Panel>
 
         <Panel title="Modération & support" className="p-0">

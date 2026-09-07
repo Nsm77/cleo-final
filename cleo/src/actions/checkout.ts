@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { orderItems, orders, stores, users } from "@/db/schema";
+import { orderEvents, orderItems, orders, stores, users } from "@/db/schema";
 import { createSession, getCurrentUser, hashPassword } from "@/lib/auth";
 import { fail, MESSAGES, ok, zodFieldErrors, type ActionResult } from "@/lib/api";
 import { GIFT_WRAP_FEE, shippingFor } from "@/lib/money";
@@ -179,11 +179,23 @@ export async function cancelOrderAction(orderId: number): Promise<ActionResult> 
 export async function requestReturnAction(orderId: number, reason: string): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me) return fail(MESSAGES.unauthorized);
-  const o = await db.query.orders.findFirst({ where: and(eq(orders.id, orderId), eq(orders.userId, me.id)) });
-  if (!o) return fail(MESSAGES.notFound);
-  if (o.status !== "delivered") return fail("Seules les commandes livrées peuvent faire l'objet d'un retour.");
-  await addOrderEvent(db, o.id, "delivered", `Demande de retour : ${reason.slice(0, 200)}`, me.id);
-  await audit(me.id, "order.return_request", "order", orderId, { reason });
-  revalidatePath(`/compte/commandes/${o.number}`);
+  const trimmed = reason.trim().slice(0, 200);
+  if (trimmed.length < 3) return fail("Merci de préciser le motif du retour.");
+  try {
+    const number = await db.transaction(async (tx) => {
+      const o = await lockOrder(tx, orderId);
+      if (!o || o.userId !== me.id) throw new Error(MESSAGES.notFound);
+      if (o.status !== "delivered") throw new Error("Seules les commandes livrées peuvent faire l'objet d'un retour.");
+      // A double click must not stack duplicate requests on the timeline.
+      const dup = await tx.select({ id: orderEvents.id }).from(orderEvents)
+        .where(and(eq(orderEvents.orderId, o.id), eq(orderEvents.message, `Demande de retour : ${trimmed}`))).limit(1);
+      if (!dup.length) await addOrderEvent(tx, o.id, "delivered", `Demande de retour : ${trimmed}`, me.id);
+      return o.number;
+    });
+    await audit(me.id, "order.return_request", "order", orderId, { reason: trimmed });
+    revalidatePath(`/compte/commandes/${number}`);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : MESSAGES.generic);
+  }
   return ok(undefined, "Demande de retour enregistrée. Notre équipe vous contactera sous 48 h.");
 }

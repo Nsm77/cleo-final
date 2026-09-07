@@ -54,9 +54,19 @@ function Check({ checked, onChange, label, count }: { checked: boolean; onChange
 
 export function FilterPanel({ facets, hideConcerns = false, hideBrands = false }: { facets: Facets; hideConcerns?: boolean; hideBrands?: boolean }) {
   const f = useFilterParams();
-  const [min, setMin] = useState(f.sp.get("min") ?? "");
-  const [max, setMax] = useState(f.sp.get("max") ?? "");
-  useEffect(() => { setMin(f.sp.get("min") ?? ""); setMax(f.sp.get("max") ?? ""); }, [f.sp]);
+  /*
+   * `min`/`max` hold the draft value while typing; the URL is the committed value.
+   * When the URL changes (e.g. « Tout effacer ») the draft is re-synced during
+   * render — React's documented "adjusting state when a prop changes" pattern,
+   * which avoids the cascading render an effect-based reset would cause.
+   */
+  const urlMin = f.sp.get("min") ?? "";
+  const urlMax = f.sp.get("max") ?? "";
+  const [min, setMin] = useState(urlMin);
+  const [max, setMax] = useState(urlMax);
+  const [synced, setSynced] = useState(`${urlMin}\u0000${urlMax}`);
+  const current = `${urlMin}\u0000${urlMax}`;
+  if (current !== synced) { setSynced(current); setMin(urlMin); setMax(urlMax); }
   return (
     <div className={f.pending ? "opacity-60 transition-opacity" : "transition-opacity"}>
       <div className="flex items-center justify-between border-b border-stone pb-3">

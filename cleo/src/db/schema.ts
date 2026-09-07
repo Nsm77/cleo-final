@@ -89,7 +89,15 @@ export const addresses = pgTable(
     isDefault: boolean("is_default").default(false).notNull(),
     ...timestamps,
   },
-  (t) => [index("addresses_user_idx").on(t.userId)],
+  (t) => [
+    index("addresses_user_idx").on(t.userId),
+    /*
+     * Enforce "one default address per customer" in the database, not just in
+     * application code — the clear-then-set sequence cannot leave two defaults
+     * even if a writer crashes or bypasses the action.
+     */
+    uniqueIndex("addresses_one_default_idx").on(t.userId).where(sql`${t.isDefault}`),
+  ],
 );
 
 /* ── Catalog ───────────────────────────────────────────── */
