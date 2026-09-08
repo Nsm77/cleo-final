@@ -5,6 +5,7 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.oxml.ns import qn
 from lxml import etree
 from PIL import Image
 
@@ -20,6 +21,7 @@ TXT = RGBColor(0xF3, 0xEC, 0xDD)
 MUT = RGBColor(0xB9, 0xAC, 0x93)
 GOLD = RGBColor(0xC9, 0xA9, 0x59)
 GOLD_D = RGBColor(0x9A, 0x7B, 0x3F)
+GHOST_GOLD = RGBColor(0x5A, 0x4C, 0x24)
 INK = RGBColor(0x1A, 0x15, 0x10)
 SERIF, SANS = "Georgia", "Calibri"
 W, H = 13.333, 7.5
@@ -112,16 +114,36 @@ def rule(slide, l, t, w, name="!!RULE"):
 
 
 def header(slide, eyebrow, title):
-    txt(slide, 0.7, 0.32, 11.9, 0.36, eyebrow, size=13, name="!!EYE",
+    txt(slide, 0.7, 0.32, 10.4, 0.36, eyebrow, size=13, name="!!EYE",
         color=GOLD, bold=True, font=SANS, space=2)
-    txt(slide, 0.7, 0.72, 11.9, 0.9, title, size=30, name="!!TITLE",
+    txt(slide, 0.7, 0.72, 10.4, 0.9, title, size=30, name="!!TITLE",
         color=TXT, bold=True, font=SERIF, space=2)
     rule(slide, 0.7, 1.62, 1.6)
+    num = eyebrow[:2] if eyebrow[:2].isdigit() else (eyebrow[7:9] if eyebrow.startswith("ANNEXE") else "")
+    if num:
+        txt(slide, 11.25, 0.28, 1.45, 1.3, num.strip(), size=52, name="!!GHOST",
+            color=GHOST_GOLD, bold=True, font=SERIF, align=PP_ALIGN.RIGHT, space=0)
 
 
 def footer(slide, i, n):
     txt(slide, 0.7, 7.02, 6, 0.35, "Cléopâtre · Soutenance PFE", size=11, name="!!FOOT", color=MUT)
     txt(slide, 12.0, 7.02, 0.7, 0.35, f"{i:02d}", size=11, name="!!NUM", color=MUT, align=PP_ALIGN.RIGHT)
+
+
+def footer_annex(slide, tag):
+    txt(slide, 0.7, 7.02, 6, 0.35, "Cléopâtre · Soutenance PFE — Annexe jury", size=11,
+        name="!!FOOT", color=MUT)
+    txt(slide, 12.0, 7.02, 0.7, 0.35, tag, size=11, name="!!NUM", color=MUT, align=PP_ALIGN.RIGHT)
+
+
+def frame(slide):
+    for inset, wdt in ((0.16, 2.0), (0.26, 0.75)):
+        fr = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(inset), Inches(inset),
+                                    Inches(W - 2 * inset), Inches(H - 2 * inset))
+        fr.name = "!!FRAME"
+        fr.fill.background()
+        fr.line.color.rgb = GOLD
+        fr.line.width = Pt(wdt)
 
 
 def pic_fit(slide, path, l, t, w, h, name=None, border=True):
@@ -142,6 +164,15 @@ def pic_fit(slide, path, l, t, w, h, name=None, border=True):
     if border:
         p.line.color.rgb = GOLD_D
         p.line.width = Pt(1.25)
+    # coins arrondis (Crop to Shape > Rounded Rectangle)
+    A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    spPr = p._element.find(qn("p:spPr"))
+    old = spPr.find(f"{{{A}}}prstGeom")
+    if old is not None:
+        spPr.remove(old)
+    prst = etree.SubElement(spPr, f"{{{A}}}prstGeom", prst="roundRect")
+    av = etree.SubElement(prst, f"{{{A}}}avLst")
+    etree.SubElement(av, f"{{{A}}}gd", name="adj", fmla="val 9000")
     return p
 
 
@@ -149,12 +180,13 @@ def notes(slide, text):
     slide.notes_slide.notes_text_frame.text = text
 
 
-NSLIDES = 18
+NSLIDES = 19
 C = "•  "  # puce
 
 # ══ 1. Couverture ═════════════════════════════════════════
 s = prs.slides.add_slide(BLANK)
 bg(s)
+frame(s)
 pic_fit(s, "fig01_logo.png", 5.92, 0.75, 1.5, 1.5, name="!!LOGO", border=False)
 txt(s, 1.0, 2.45, 11.33, 0.5, "RAPPORT DE PROJET DE FIN D'ÉTUDES  ·  SOUTENANCE", size=14,
     name="!!EYE", color=GOLD, bold=True, align=PP_ALIGN.CENTER)
@@ -418,7 +450,7 @@ s = prs.slides.add_slide(BLANK)
 bg(s)
 header(s, "05  ·  BILAN", "Livré, démontré, accepté")
 stats = [("24/24", "récits terminés\n2 releases acceptées"), ("81", "produits en ligne\n8 marques, 7 univers"),
-         ("24", "tables + audit\n10 énumérations"), ("102", "pages de rapport\n94 figures, 40 tableaux")]
+         ("24", "tables + audit\n10 énumérations"), ("104", "pages de rapport\n94 figures, 40 tableaux")]
 for j, (n, t) in enumerate(stats):
     x = 0.7 + j * 3.05
     panel(s, x, 2.05, 2.85, 2.4, name=f"BIL{j}")
@@ -429,13 +461,35 @@ txt(s, 0.7, 4.8, 11.93, 1.7,
     size=15, color=MUT, align=PP_ALIGN.CENTER)
 footer(s, 17, NSLIDES)
 notes(s, "Bilan : les 24 récits sont terminés et démontrés, la recette tourne sous Docker, le rapport "
-         "fait 102 pages. Personnellement : autonomie full-stack, rigueur Scrum, et l'exigence d'écrire "
+         "fait 104 pages. Personnellement : autonomie full-stack, rigueur Scrum, et l'exigence d'écrire "
          "un code que l'on peut expliquer au jury.")
 
-# ══ 18. Merci ═════════════════════════════════════════════
+# ══ 18. Démo ══════════════════════════════════════════════
 s = prs.slides.add_slide(BLANK)
 bg(s)
-txt(s, 1.0, 1.2, 11.33, 0.5, "05  ·  PERSPECTIVES", size=13, name="!!EYE", color=GOLD, bold=True,
+header(s, "05  ·  DÉMONSTRATION", "La preuve par l'écran")
+panel(s, 0.7, 2.0, 7.3, 4.7, name="DEMOL")
+txt(s, 1.0, 2.15, 6.7, 4.4, [("Scénario — 6 minutes", {"size": 19, "bold": True, "color": GOLD}),
+                              ("1. Acheter : recherche « solaire », fiche produit, panier, tunnel, confirmation.\n"
+                               "2. Piloter : la commande tombe au dashboard, avance Confirmée → Expédiée.\n"
+                               "3. Rassurer : timeline client, avis modéré, ticket support clôturé.",
+                               {"size": 15})], space=6)
+panel(s, 8.3, 2.0, 4.03, 4.7, name="DEMOR")
+txt(s, 8.55, 2.15, 3.53, 4.4, [("Accès recette", {"size": 17, "bold": True, "color": GOLD}),
+                                ("[Collez ici le QR]", {"size": 14, "color": MUT}),
+                                ("https://[recette].tn", {"size": 14, "bold": True}),
+                                ("client : [e-mail] / [mdp]\nadmin : [e-mail] / [mdp]",
+                                 {"size": 13, "color": MUT})], align=PP_ALIGN.CENTER, space=5)
+footer(s, 18, NSLIDES)
+notes(s, "Passons à la démonstration en direct : six minutes, trois actes — acheter, piloter, rassurer. "
+         "Le QR et les comptes de recette sont affichés. En cas de réseau capricieux, les captures du "
+         "rapport prennent le relais.")
+
+# ══ 19. Merci ═════════════════════════════════════════════
+s = prs.slides.add_slide(BLANK)
+bg(s)
+frame(s)
+txt(s, 1.0, 1.2, 11.33, 0.35, "05  ·  PERSPECTIVES", size=13, name="!!EYE", color=GOLD, bold=True,
     align=PP_ALIGN.CENTER)
 txt(s, 1.0, 1.6, 11.33, 1.0, "Merci de votre attention", size=38, name="!!TITLE", color=TXT, bold=True,
     font=SERIF, align=PP_ALIGN.CENTER)
@@ -449,6 +503,43 @@ txt(s, 2.5, 5.5, 8.33, 0.9,
     [("[Nom Prénom]  ·  [e-mail]  ·  [téléphone]", {"size": 14, "color": MUT})], align=PP_ALIGN.CENTER)
 notes(s, "Conclure : remercier le jury, rappeler les perspectives — paiement en ligne, version arabe, "
          "recommandation — et ouvrir aux questions.")
+
+# ══ A1. Backup : machine à états ══════════════════════════
+s = prs.slides.add_slide(BLANK)
+bg(s)
+header(s, "ANNEXE A1  ·  SECOURS JURY", "Cycle de vie d'une commande — machine à états")
+pic_fit(s, "fig49_statemachine.png", 1.5, 1.9, 10.33, 4.85, name="BK1")
+footer_annex(s, "A1")
+notes(s, "Secours : si le jury questionne les transitions — 7 statuts, transitions verrouillées en base, "
+         "effets idempotents (paiement COD, fidélité, réassort).")
+
+# ══ A2. Backup : sécurité ═════════════════════════════════
+s = prs.slides.add_slide(BLANK)
+bg(s)
+header(s, "ANNEXE A2  ·  SECOURS JURY", "Sécurité — hachage, sessions, rôles")
+pic_fit(s, "fig23_scrypt.png", 0.7, 1.95, 5.85, 4.75, name="BK2A")
+pic_fit(s, "fig24_roles.png", 6.78, 1.95, 5.85, 4.75, name="BK2B")
+footer_annex(s, "A2")
+notes(s, "Secours : si le jury creuse la sécurité — scrypt salé, sessions opaques 256 bits en cookie "
+         "httpOnly, gardes serveur cumulatifs, anti-brute-force et anti-énumération.")
+
+# ══ A3. Backup : modèle global ════════════════════════════
+s = prs.slides.add_slide(BLANK)
+bg(s)
+header(s, "ANNEXE A3  ·  SECOURS JURY", "Modèle global — relation client, contenu, pilotage")
+pic_fit(s, "figGX_modele.png", 2.6, 1.9, 8.13, 4.85, name="BK3")
+footer_annex(s, "A3")
+notes(s, "Secours : si le jury veut le modèle complet — 10 tables autonomes reliées à la release 1, "
+         "24 tables et 10 énumérations au total, dictionnaire en Annexe B du rapport.")
+
+# ══ A4. Backup : déploiement ══════════════════════════════
+s = prs.slides.add_slide(BLANK)
+bg(s)
+header(s, "ANNEXE A4  ·  SECOURS JURY", "Mise en production — conteneurs et recette")
+pic_fit(s, "fig19_deploiement.png", 1.5, 1.9, 10.33, 4.85, name="BK4")
+footer_annex(s, "A4")
+notes(s, "Secours : si le jury questionne l'exploitation — conteneurs web + base, variables "
+         "d'environnement, seed de démonstration, sauvegardes pg_dump, guide en Annexe C.")
 
 # ── Morph sur chaque diapo + métadonnées + sauvegarde ───
 for sl in prs.slides:

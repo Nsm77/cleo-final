@@ -190,7 +190,7 @@ def remerciements(pdf: Report):
 
 
 # ── sommaire & listes ────────────────────────────────────
-def _dotted_entry(pdf, level, label, page, size=9.0, bold=False):
+def _dotted_entry(pdf, level, label, page, size=9.0, bold=False, link=""):
     lm, rm = pdf.l_margin, pdf.r_margin
     indent = level * 8
     pdf.set_font("sans" if bold else "serif", "B" if bold else "", size + (0.5 if bold else 0))
@@ -206,7 +206,7 @@ def _dotted_entry(pdf, level, label, page, size=9.0, bold=False):
     x = lm + indent
     pdf.set_x(x)
     h = 5.4 if not bold else 6.0
-    pdf.cell(pdf.get_string_width(label) + 1, h, label)
+    pdf.cell(pdf.get_string_width(label) + 1, h, label, link=link or "")
     x1 = pdf.get_x() + 1
     x2 = pdf.w - rm - pg_w
     dot_w = pdf.get_string_width(". ")
@@ -216,7 +216,7 @@ def _dotted_entry(pdf, level, label, page, size=9.0, bold=False):
     pdf.cell(x2 - x1, h, ". " * n)
     pdf.set_text_color(*INK)
     pdf.set_font("sans" if bold else "serif", "B" if bold else "", size)
-    pdf.cell(pg_w, h, pg, align="R")
+    pdf.cell(pg_w, h, pg, align="R", link=link or "")
     pdf.ln(h + (1.2 if bold else 0.4))
 
 
@@ -227,24 +227,26 @@ def toc_block(pdf, entries):
     pdf.set_text_color(*INK)
     pdf.cell(0, 8, "Table des matières", align="L")
     pdf.ln(8)
-    for level, title, page in entries:
+    for level, title, page, link in entries:
         if pdf.get_y() > 268:
             pdf.add_page()
-        _dotted_entry(pdf, level, title, page, bold=(level == 0))
+        _dotted_entry(pdf, level, title, page, bold=(level == 0), link=link)
 
 
-def list_block(pdf, title, entries, prefix):
+def list_block(pdf, title, entries, prefix, strip=""):
     pdf.current_chapter = title
     pdf.add_page()
     pdf.set_font("sans", "B", 15)
     pdf.set_text_color(*INK)
     pdf.cell(0, 8, title, align="L")
     pdf.ln(8)
-    for num, caption, page in entries:
+    for num, caption, page, link in entries:
         if pdf.get_y() > 268:
             pdf.add_page()
+        if strip and caption.startswith(strip):
+            caption = caption[len(strip):]
         label = f"{prefix} {num} – {caption}"
-        _dotted_entry(pdf, 0, label, page, size=8.6)
+        _dotted_entry(pdf, 0, label, page, size=8.6, link=link)
 
 
 def abbr_block(pdf):
@@ -296,11 +298,76 @@ def render_front_cover(pdf):
     remerciements(pdf)
 
 
-def render_front_lists(pdf, toc, figs, tabs):
+def render_front_lists(pdf, toc, figs, tabs, codes):
     toc_block(pdf, toc)
     list_block(pdf, "Liste des figures", figs, "Figure")
     list_block(pdf, "Liste des tableaux", tabs, "Tableau")
+    list_block(pdf, "Liste des extraits de code", codes, "Extrait", strip="Extrait — ")
     abbr_block(pdf)
+
+
+BACK_INK = (43, 38, 32)
+BACK_PAPER = (235, 228, 214)
+BACK_MUT = (185, 172, 147)
+
+
+def back_cover(pdf: Report):
+    pdf.current_chapter = ""
+    pdf.add_page()
+    pdf.no_footer_pages.add(pdf.page_no())
+    pdf.set_fill_color(*BACK_INK)
+    pdf.rect(0, 0, 210, 297, style="F")
+    pdf.set_draw_color(*GOLD)
+    pdf.set_line_width(0.7)
+    pdf.rect(9, 9, 192, 279)
+    pdf.set_line_width(0.25)
+    pdf.rect(11.5, 11.5, 187, 274)
+    pdf.set_xy(22, 30)
+    pdf.set_font("sans", "B", 13)
+    pdf.set_text_color(*GOLD)
+    pdf.cell(0, 7, "RÉSUMÉ", align="C")
+    pdf.ln(9)
+    pdf.set_font("serif", "", 10)
+    pdf.set_text_color(*BACK_PAPER)
+    pdf.multi_cell(0, 5.4, "Ce rapport présente la conception et la réalisation d'une plateforme e-commerce "
+        "complète pour la parapharmacie tunisienne Cléopâtre : site marchand (catalogue, recherche à "
+        "facettes, tunnel de commande, suivi invité sécurisé) et back-office (commandes, stock, "
+        "promotions, avis, support, audit). Conduite en Scrum (un sprint 0, quatre sprints en deux "
+        "releases) et réalisée en Next.js, TypeScript et PostgreSQL, la plateforme applique des "
+        "exigences fortes — montants en millimes, scrypt, sessions httpOnly, transactions verrouillées, "
+        "commandes idempotentes — et reconstruit de zéro l'ancien site vitrine.", align="J")
+    pdf.ln(3)
+    pdf.set_font("serif", "B", 10)
+    pdf.set_text_color(*BACK_MUT)
+    pdf.multi_cell(0, 5.4, "Mots-clés : e-commerce, parapharmacie, Scrum, Next.js, PostgreSQL, UML, Docker.",
+                   align="C")
+    pdf.ln(8)
+    pdf.set_font("sans", "B", 13)
+    pdf.set_text_color(*GOLD)
+    pdf.cell(0, 7, "ABSTRACT", align="C")
+    pdf.ln(9)
+    pdf.set_font("serif", "", 10)
+    pdf.set_text_color(*BACK_PAPER)
+    pdf.multi_cell(0, 5.4, "This report presents the design and implementation of a complete e-commerce "
+        "platform for the Tunisian parapharmacy Cléopâtre: storefront (catalog, faceted search, checkout "
+        "flow, secured guest tracking) and back-office (orders, inventory, promotions, reviews, support, "
+        "audit). Conducted with Scrum (one sprint 0, four sprints in two releases) and built with "
+        "Next.js, TypeScript and PostgreSQL, the platform enforces strong guarantees — integer millimes, "
+        "scrypt, httpOnly sessions, locked transactions, idempotent orders — and rebuilds the legacy "
+        "showcase site from scratch.", align="J")
+    pdf.ln(3)
+    pdf.set_font("serif", "B", 10)
+    pdf.set_text_color(*BACK_MUT)
+    pdf.multi_cell(0, 5.4, "Keywords: e-commerce, parapharmacy, Scrum, Next.js, PostgreSQL, UML, Docker.",
+                   align="C")
+    pdf.ln(14)
+    pdf.set_draw_color(*GOLD)
+    pdf.set_line_width(0.6)
+    pdf.line(80, pdf.get_y(), 130, pdf.get_y())
+    pdf.ln(8)
+    pdf.set_font("sans", "", 10)
+    pdf.set_text_color(*BACK_MUT)
+    pdf.cell(0, 6, "[Établissement]  ·  [Diplôme — Filière]  ·  [20XX – 20XX]", align="C")
 
 
 def render_body(pdf):
@@ -308,44 +375,75 @@ def render_body(pdf):
         render_block(pdf, kind, payload)
 
 
+def _mk_link(pdf, dest):
+    lk = pdf.add_link()
+    pdf.set_link(lk, page=dest[0], y=dest[1])
+    return lk
+
+
+def _with_links(pdf, entries, dests):
+    assert len(entries) == len(dests), f"destinations désalignées: {len(entries)} != {len(dests)}"
+    return [(a, b, c, _mk_link(pdf, d)) for (a, b, c, _), d in zip(entries, dests)]
+
+
 def build():
     check_markup()
-    # Passe 1 (mesure) : garde + corps, pour relever les pages brutes
+    # Passe 1 (mesure) : garde + corps + dos, pour relever les pages brutes
     m = Report()
     render_front_cover(m)
     f0 = m.page_no()
     render_body(m)
+    back_cover(m)
     toc_raw = list(m.toc_entries)
     fig_raw = list(m.fig_entries)
     tab_raw = list(m.tab_entries)
-    print(f"mesure: front_min={f0} pages, corps={m.page_no() - f0} pages, "
-          f"toc={len(toc_raw)}, fig={len(fig_raw)}, tab={len(tab_raw)}")
+    code_raw = list(m.code_entries)
+    print(f"mesure: front_min={f0} pages, corps+dos={m.page_no() - f0} pages, "
+          f"toc={len(toc_raw)}, fig={len(fig_raw)}, tab={len(tab_raw)}, code={len(code_raw)}")
     # Passe 2 (mesure du front complet, numéros factices)
     t = Report()
     render_front_cover(t)
-    render_front_lists(t, [(l, ti, 1) for l, ti, _ in toc_raw],
-                       [(n, c, 1) for n, c, _ in fig_raw],
-                       [(n, c, 1) for n, c, _ in tab_raw])
+    render_front_lists(t, [(l, ti, 1, "") for l, ti, _ in toc_raw],
+                       [(n, c, 1, "") for n, c, _ in fig_raw],
+                       [(n, c, 1, "") for n, c, _ in tab_raw],
+                       [(n, c, 1, "") for n, c, _ in code_raw])
     F = t.page_no()
     shift = F - f0
     print(f"front complet={F} pages, décalage={shift}")
-    toc = [(l, ti, p + shift) for l, ti, p in toc_raw]
-    figs = [(n, c, p + shift) for n, c, p in fig_raw]
-    tabs = [(n, c, p + shift) for n, c, p in tab_raw]
-    # Passe 3 (finale)
+    toc = [(l, ti, p + shift, "") for l, ti, p in toc_raw]
+    figs = [(n, c, p + shift, "") for n, c, p in fig_raw]
+    tabs = [(n, c, p + shift, "") for n, c, p in tab_raw]
+    codes = [(n, c, p + shift, "") for n, c, p in code_raw]
+    # Passe 3 (destinations) : front réel sans liens + corps + dos
+    r = Report()
+    render_front_cover(r)
+    render_front_lists(r, toc, figs, tabs, codes)
+    assert r.page_no() == F, f"front instable p3: {r.page_no()} != {F}"
+    render_body(r)
+    back_cover(r)
+    assert [p for _, _, p in r.toc_entries] == [p for _, _, p, _ in toc], "TOC instable p3"
+    assert [p for _, _, p in r.fig_entries] == [p for _, _, p, _ in figs], "Fig instable p3"
+    assert [p for _, _, p in r.tab_entries] == [p for _, _, p, _ in tabs], "Tab instable p3"
+    assert [p for _, _, p in r.code_entries] == [p for _, _, p, _ in codes], "Code instable p3"
+    # Passe 4 (finale) : front avec liens + corps + dos
     pdf = Report()
     pdf.set_title("Rapport PFE — Plateforme e-commerce pour la parapharmacie Cléopâtre")
     pdf.set_author("[Nom Prénom de l'étudiant(e)] — [Établissement]")
     pdf.set_subject("Projet de Fin d'Études — Scrum — Next.js / PostgreSQL")
     pdf.set_creator("build.py (fpdf2)")
     render_front_cover(pdf)
-    render_front_lists(pdf, toc, figs, tabs)
+    render_front_lists(pdf, _with_links(pdf, toc, r.toc_dest),
+                       _with_links(pdf, figs, r.fig_dest),
+                       _with_links(pdf, tabs, r.tab_dest),
+                       _with_links(pdf, codes, r.code_dest))
     assert pdf.page_no() == F, f"front instable: {pdf.page_no()} != {F}"
     render_body(pdf)
+    back_cover(pdf)
     # vérification : les pages relevées doivent matcher
-    assert [p for _, _, p in pdf.toc_entries] == [p for _, _, p in toc], "TOC instable"
-    assert [p for _, _, p in pdf.fig_entries] == [p for _, _, p in figs], "Fig instable"
-    assert [p for _, _, p in pdf.tab_entries] == [p for _, _, p in tabs], "Tab instable"
+    assert [p for _, _, p in pdf.toc_entries] == [p for _, _, p, _ in toc], "TOC instable"
+    assert [p for _, _, p in pdf.fig_entries] == [p for _, _, p, _ in figs], "Fig instable"
+    assert [p for _, _, p in pdf.tab_entries] == [p for _, _, p, _ in tabs], "Tab instable"
+    assert [p for _, _, p in pdf.code_entries] == [p for _, _, p, _ in codes], "Code instable"
     pdf.output(OUT_PDF)
     print(f"PDF généré : {OUT_PDF} ({pdf.page_no()} pages)")
 

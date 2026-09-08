@@ -37,36 +37,43 @@ class Report(FPDF):
         # state
         self.fig_no = 0
         self.tab_no = 0
+        self.code_no = 0
         self.toc_entries: list[tuple[int, str, int]] = []
         self.fig_entries: list[tuple[int, str, int]] = []
         self.tab_entries: list[tuple[int, str, int]] = []
+        self.code_entries: list[tuple[int, str, int]] = []
+        self.toc_dest: list[tuple[int, float]] = []
+        self.fig_dest: list[tuple[int, float]] = []
+        self.tab_dest: list[tuple[int, float]] = []
+        self.code_dest: list[tuple[int, float]] = []
         self.current_chapter = ""
         self.show_footer = True
         self.cover_done = False
+        self.no_footer_pages: set[int] = set()
 
     # ── header / footer ──────────────────────────────────
     def header(self):
         if self.page_no() == 1 or not self.cover_done:
             return
         if self.current_chapter:
-            self.set_font("sans", "", 7.5)
+            self.set_font("sans", "", 7)
             self.set_text_color(*MUTED)
-            self.cell(0, 6, self.current_chapter, align="R")
+            self.cell(0, 6, self.current_chapter.upper(), align="R")
             self.set_draw_color(*STONE_LINE)
             self.set_line_width(0.2)
             self.line(self.l_margin, 15.5, self.w - self.r_margin, 15.5)
             self.ln(9)
 
     def footer(self):
-        if self.page_no() == 1 or not self.show_footer:
+        if self.page_no() == 1 or not self.show_footer or self.page_no() in self.no_footer_pages:
             return
         self.set_y(-14)
         self.set_draw_color(*STONE_LINE)
         self.set_line_width(0.2)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-        self.set_font("sans", "", 8)
-        self.set_text_color(*MUTED)
-        self.cell(0, 7, f"{self.page_no()}", align="C")
+        self.set_font("sans", "B", 8.5)
+        self.set_text_color(*GOLD_DARK)
+        self.cell(0, 7, f"— {self.page_no()} —", align="C")
 
     # ── inline markup : **gras** et `code` ───────────────
     def rich_line(self, text: str, base_family="serif", base_size=10.5, align="J"):
@@ -131,16 +138,24 @@ class Report(FPDF):
         if toc:
             self.start_section(text, level=0)
             self.toc_entries.append((0, text, self.page_no()))
+            self.toc_dest.append((self.page_no(), self.get_y()))
         self.ln(6)
-        self.set_font("sans", "B", 21)
-        self.set_text_color(*INK)
-        # small gold rule
+        # bandeau plein cadre : fond encre, titre blanc, filet or
+        W = self.w - self.l_margin - self.r_margin
+        n = self._cell_lines(text, W + 2, "serif", "B", 20)
+        y0 = self.get_y()
+        bh = n * 10 + 16
+        self.set_fill_color(*INK)
+        self.rect(0, y0, self.w, bh, style="F")
+        self.set_xy(self.l_margin, y0 + 8)
+        self.set_font("serif", "B", 20)
+        self.set_text_color(*WHITE)
+        self.multi_cell(W, 10, text, align="L")
         self.set_draw_color(*GOLD)
-        self.set_line_width(1.1)
-        self.multi_cell(0, 10, text, align="L")
-        y = self.get_y()
-        self.line(self.l_margin, y + 1, self.l_margin + 34, y + 1)
-        self.ln(9)
+        self.set_line_width(1.2)
+        self.line(self.l_margin, y0 + bh + 4, self.l_margin + 40, y0 + bh + 4)
+        self.set_y(y0 + bh + 11)
+        self.set_text_color(*INK)
 
     def h2(self, text, toc=True):
         if self.get_y() > 240:
@@ -148,6 +163,7 @@ class Report(FPDF):
         if toc:
             self.start_section(text, level=1)
             self.toc_entries.append((1, text, self.page_no()))
+            self.toc_dest.append((self.page_no(), self.get_y()))
         self.ln(3)
         self.set_font("sans", "B", 13.5)
         self.set_text_color(*GOLD_DARK)
@@ -160,6 +176,7 @@ class Report(FPDF):
         if toc:
             self.start_section(text, level=2)
             self.toc_entries.append((2, text, self.page_no()))
+            self.toc_dest.append((self.page_no(), self.get_y()))
         self.ln(2)
         self.set_font("sans", "B", 11)
         self.set_text_color(*INK)
@@ -169,6 +186,9 @@ class Report(FPDF):
     # ── tableaux ─────────────────────────────────────────
     def table_block(self, caption, head, rows, widths=None, size=8.6):
         self.tab_no += 1
+        if self.get_y() + 6 > self.page_break_trigger:
+            self.add_page()
+        self.tab_dest.append((self.page_no(), self.get_y()))
         self._table_inner(head, rows, widths, size)
         self.set_font("sans", "", 8.5)
         self.set_text_color(*MUTED)
@@ -260,6 +280,7 @@ class Report(FPDF):
             est = 80
         if self.get_y() + min(est, 120) > self.page_break_trigger and self.get_y() > 60:
             self.add_page()
+        self.fig_dest.append((self.page_no(), self.get_y()))
         x = (self.w - width) / 2
         self.image(path, x=x, w=width)
         self.ln(2)
@@ -272,6 +293,8 @@ class Report(FPDF):
     def code_block(self, title, text, size=8.0):
         if self.get_y() > 235:
             self.add_page()
+        self.code_no += 1
+        self.code_dest.append((self.page_no(), self.get_y()))
         self.set_font("sans", "B", 8.5)
         self.set_text_color(*GOLD_DARK)
         self.cell(0, 5, title, align="L")
@@ -288,6 +311,7 @@ class Report(FPDF):
             self.set_x(x)
             self.cell(W, 4.4, "  " + line.replace("\t", "  ")[:120], fill=True)
             self.ln(4.4)
+        self.code_entries.append((self.code_no, title, self.page_no()))
         self.ln(4)
 
     def info_box(self, title, text):
