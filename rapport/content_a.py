@@ -38,6 +38,7 @@ CH1 = [
         "**Communication limitée au bouche-à-oreille** : la réputation est excellente localement mais ne rayonne pas ; les jeunes clientes, qui achètent tout en ligne, échappent à la maison.",
     ]),
     ("p", "Ce fonctionnement, honorable pour une boutique de quartier, atteint ses limites dès que l'on vise la croissance : chaque commande à distance coûte un temps téléphonique considérable, chaque erreur de stock se paie en client mécontent, et la direction pilote à l'aveugle, sans le moindre indicateur chiffré."),
+    ("p", "Précision de périmètre : la maison disposait déjà d'un site vitrine préexistant [décrivez-le en une phrase : objet, technologie, année de mise en ligne], qui ne permettait ni la vente ni la gestion. Plutôt que de le faire évoluer, il a été décidé, d'un commun accord avec la direction, de le **reconstruire entièrement de zéro** : socle technique, modèle de données et interfaces ont été repris à neuf, sans réutiliser le code existant. L'**Annexe A** documente cette refonte par un comparatif page à page (captures « avant » à insérer, figures « après » renvoyant au corps du rapport)."),
     ("h3", "I.3.3. Critique de l'existant"),
     ("p", "La critique de l'existant fait apparaître quatre familles de problèmes, classés par gravité décroissante :"),
     ("bullets", [

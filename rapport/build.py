@@ -10,12 +10,13 @@ from content_b import CH2
 from content_c import CH3
 from content_d import CH4
 from content_e import FIN, BIBLIO, RESUME, ABBR
+from content_f import ANNEXES
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIGS = os.path.join(HERE, "figs")
 OUT_PDF = os.path.join(HERE, "Rapport_PFE_Cleopatre.pdf")
 
-BODY = INTRO + CH1 + CH2 + CH3 + CH4 + FIN + BIBLIO + RESUME
+BODY = INTRO + CH1 + CH2 + CH3 + CH4 + FIN + BIBLIO + ANNEXES + RESUME
 
 
 def md(text: str) -> str:
@@ -71,6 +72,11 @@ def bullets(pdf: Report, items, numbered=False):
 # ── pages de garde ────────────────────────────────────────
 def cover(pdf: Report):
     pdf.add_page()
+    pdf.set_draw_color(*GOLD)
+    pdf.set_line_width(0.7)
+    pdf.rect(9, 9, 192, 279)
+    pdf.set_line_width(0.25)
+    pdf.rect(11.5, 11.5, 187, 274)
     pdf.ln(8)
     pdf.set_font("sans", "B", 11)
     pdf.set_text_color(*INK)
@@ -328,6 +334,10 @@ def build():
     tabs = [(n, c, p + shift) for n, c, p in tab_raw]
     # Passe 3 (finale)
     pdf = Report()
+    pdf.set_title("Rapport PFE — Plateforme e-commerce pour la parapharmacie Cléopâtre")
+    pdf.set_author("[Nom Prénom de l'étudiant(e)] — [Établissement]")
+    pdf.set_subject("Projet de Fin d'Études — Scrum — Next.js / PostgreSQL")
+    pdf.set_creator("build.py (fpdf2)")
     render_front_cover(pdf)
     render_front_lists(pdf, toc, figs, tabs)
     assert pdf.page_no() == F, f"front instable: {pdf.page_no()} != {F}"
