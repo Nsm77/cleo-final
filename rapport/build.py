@@ -1,22 +1,22 @@
-"""Assemble le rapport PFE complet : garde, sommaire, chapitres, listes, conclusion."""
+"""Assemble le rapport PFE complet : garde, sommaire, parties, listes, conclusion. (V14)"""
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from doc import Report, INK, MUTED, GOLD, GOLD_DARK, STONE_LINE, SHADE
+from doc import Report, INK, MUTED, GOLD, GOLD_DARK, STONE_LINE, SHADE, IVORY, WHITE
 from content_a import INTRO, CH1
 from content_b import CH2
 from content_c import CH3
 from content_d import CH4
-from content_e import FIN, BIBLIO, RESUME, ABBR
+from content_e import FIN, CONCL, BIBLIO, RESUME, ABBR
 from content_f import ANNEXES
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIGS = os.path.join(HERE, "figs")
 OUT_PDF = os.path.join(HERE, "Rapport_PFE_Cleopatre.pdf")
 
-BODY = INTRO + CH1 + CH2 + CH3 + CH4 + FIN + BIBLIO + ANNEXES + RESUME
+BODY = INTRO + CH1 + CH2 + CH3 + CH4 + FIN + CONCL + BIBLIO + ANNEXES + RESUME
 
 
 def md(text: str) -> str:
@@ -26,10 +26,11 @@ def md(text: str) -> str:
 
 
 def check_markup():
-    for i, (kind, payload) in enumerate(BODY):
+    for i, item in enumerate(BODY):
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue  # intercalaire (tuple nu)
+        kind, payload = item
         if kind in ("p",):
-            for m in re.finditer(r"\*\*", payload):
-                pass
             if payload.count("**") % 2:
                 print(f"WARN block {i}: ** impair: {payload[:60]}")
             if payload.count("`") % 2:
@@ -61,7 +62,6 @@ def bullets(pdf: Report, items, numbered=False):
         pdf.cell(7, 5.4, f"{i}." if numbered else "•")
         pdf.set_text_color(*INK)
         pdf.set_font("serif", "", 10.5)
-        # hanging indent
         x = pdf.get_x()
         w = pdf.w - pdf.r_margin - x
         pdf.multi_cell(w, 5.4, md(it), markdown=True, align="J")
@@ -70,55 +70,85 @@ def bullets(pdf: Report, items, numbered=False):
 
 
 # ── pages de garde ────────────────────────────────────────
+BACK_INK = (31, 27, 22)
+BACK_PAPER = (235, 228, 214)
+BACK_MUT = (185, 172, 147)
+
+
 def cover(pdf: Report):
     pdf.add_page()
+    pdf.set_fill_color(*BACK_INK)
+    pdf.rect(0, 0, 210, 297, style="F")
     pdf.set_draw_color(*GOLD)
     pdf.set_line_width(0.7)
     pdf.rect(9, 9, 192, 279)
     pdf.set_line_width(0.25)
     pdf.rect(11.5, 11.5, 187, 274)
-    pdf.ln(8)
-    pdf.set_font("sans", "B", 11)
-    pdf.set_text_color(*INK)
-    pdf.cell(0, 6, "[ÉTABLISSEMENT — ex. Institut Supérieur d'Informatique]", align="C")
-    pdf.ln(6)
-    pdf.set_font("sans", "", 10)
-    pdf.set_text_color(*MUTED)
+    pdf.set_xy(22, 32)
+    pdf.set_font("sans", "B", 10)
+    pdf.set_text_color(*GOLD)
+    pdf.multi_cell(0, 5.5, "[ÉTABLISSEMENT — ex. Institut Supérieur d'Informatique]", align="C")
+    pdf.set_x(pdf.l_margin)
+    pdf.set_font("sans", "", 9.5)
+    pdf.set_text_color(*BACK_MUT)
     pdf.cell(0, 6, "[Département]  ·  [Filière — ex. Génie Logiciel]", align="C")
-    pdf.ln(6)
+    pdf.ln(8)
+    y = pdf.get_y()
     pdf.set_draw_color(*GOLD)
     pdf.set_line_width(0.8)
-    pdf.line(80, pdf.get_y() + 2, 130, pdf.get_y() + 2)
-    pdf.ln(12)
-    pdf.image(os.path.join(FIGS, "fig01_logo.png"), x=85, w=40)
-    pdf.ln(46)
-    pdf.set_font("sans", "B", 13)
-    pdf.set_text_color(*GOLD_DARK)
+    pdf.line(80, y, 130, y)
+    pdf.ln(10)
+    logo = os.path.join(FIGS, "fig01_cover.png")
+    pdf.image(logo, x=88, w=34)
+    pdf.ln(30)
+    # emplacement réservé : logo de l'établissement (double logo académique)
+    pdf.set_draw_color(*GOLD)
+    pdf.set_line_width(0.3)
+    try:
+        pdf.set_dash_pattern(dash=2, gap=1.6)
+    except Exception:
+        pass
+    pdf.rect(75, pdf.get_y(), 60, 13, style="D")
+    try:
+        pdf.set_dash_pattern()
+    except Exception:
+        pass
+    pdf.set_xy(75, pdf.get_y())
+    pdf.set_font("sans", "", 7)
+    pdf.set_text_color(*BACK_MUT)
+    pdf.multi_cell(60, 6.5, "[Logo de l'établissement — à insérer]", align="C")
+    pdf.set_x(pdf.l_margin)
+    pdf.ln(6)
+    pdf.set_font("sans", "B", 11.5)
+    pdf.set_text_color(*GOLD)
     pdf.cell(0, 7, "RAPPORT DE PROJET DE FIN D'ÉTUDES", align="C")
-    pdf.ln(9)
-    pdf.set_font("serif", "B", 19)
-    pdf.set_text_color(*INK)
-    pdf.multi_cell(0, 9, "Conception et réalisation d'une\nplateforme e-commerce\npour la parapharmacie Cléopâtre", align="C")
-    pdf.ln(3)
-    pdf.set_font("sans", "", 10.5)
-    pdf.set_text_color(*MUTED)
+    pdf.ln(10)
+    pdf.set_font("serif", "B", 23)
+    pdf.set_text_color(*BACK_PAPER)
+    pdf.multi_cell(0, 10.5, "Conception et réalisation d'une\nplateforme e-commerce\npour la parapharmacie Cléopâtre", align="C")
+    pdf.ln(4)
+    pdf.set_font("sans", "", 10)
+    pdf.set_text_color(*BACK_MUT)
     pdf.cell(0, 6, "Cléopâtre — Espace Santé Beauté  ·  Ezzahra – Hammam-Lif", align="C")
-    pdf.ln(14)
-    pdf.set_font("serif", "", 11)
-    pdf.set_text_color(*INK)
+    pdf.ln(12)
     for label, val in [("Réalisé par :", "[Nom Prénom de l'étudiant(e)]"),
                        ("Encadrant académique :", "[Nom — Grade, Établissement]"),
                        ("Encadrant professionnel :", "[Nom — Responsable digital, Cléopâtre]")]:
-        pdf.set_font("sans", "", 10)
-        pdf.set_text_color(*MUTED)
-        pdf.cell(62, 7, label, align="R")
-        pdf.set_font("serif", "B", 11)
-        pdf.set_text_color(*INK)
+        pdf.set_font("sans", "", 9.5)
+        pdf.set_text_color(*BACK_MUT)
+        pdf.cell(64, 7, label, align="R")
+        pdf.set_font("serif", "B", 10.5)
+        pdf.set_text_color(*BACK_PAPER)
         pdf.cell(0, 7, "  " + val, align="L")
         pdf.ln(7)
-    pdf.ln(8)
-    pdf.set_font("sans", "", 10)
-    pdf.set_text_color(*MUTED)
+    pdf.ln(10)
+    y = pdf.get_y()
+    pdf.set_draw_color(*GOLD)
+    pdf.set_line_width(0.5)
+    pdf.line(88, y, 122, y)
+    pdf.ln(6)
+    pdf.set_font("sans", "", 9.5)
+    pdf.set_text_color(*BACK_MUT)
     pdf.cell(0, 6, "Année universitaire [20XX – 20XX]  ·  Soutenance du [JJ/MM/AAAA]", align="C")
 
 
@@ -135,7 +165,6 @@ def jury(pdf: Report):
     pdf.ln(7)
     pdf.cell(0, 7, "devant le jury composé de :", align="C")
     pdf.ln(12)
-    # tableau jury via _table_inner
     pdf._table_inner(["Nom & Prénom", "Qualité", "Rôle dans le jury"],
                      [["[Nom Prénom]", "[Grade, Établissement]", "Président(e)"],
                       ["[Nom Prénom]", "[Grade, Établissement]", "Examinateur(trice)"],
@@ -156,7 +185,7 @@ def dedicaces(pdf: Report):
     pdf.set_text_color(*INK)
     pdf.cell(0, 8, "Dédicaces", align="C")
     pdf.ln(10)
-    pdf.set_font("serif", "", 11)
+    pdf.set_font("serif", "I", 11)
     pdf.set_text_color(*INK)
     for t in ["À mes parents, pour leur amour inconditionnel, leurs sacrifices silencieux et leur confiance sans faille : ce diplôme est le leur avant d'être le mien.",
               "À mes frères et sœurs, pour leur soutien et leur bonne humeur qui ont adouci les longues soirées de code.",
@@ -198,7 +227,6 @@ def _dotted_entry(pdf, level, label, page, size=9.0, bold=False, link=""):
     pg = str(page)
     pg_w = pdf.get_string_width(pg) + 2
     avail = pdf.w - lm - rm - indent - pg_w - 4
-    # tronquer si besoin
     while pdf.get_string_width(label) > avail and len(label) > 8:
         label = label[:-2]
     if pdf.get_string_width(label) > avail:
@@ -249,18 +277,12 @@ def list_block(pdf, title, entries, prefix, strip=""):
         _dotted_entry(pdf, 0, label, page, size=8.6, link=link)
 
 
-def abbr_block(pdf):
-    pdf.current_chapter = "Liste des abréviations"
-    pdf.add_page()
-    pdf.set_font("sans", "B", 15)
-    pdf.set_text_color(*INK)
-    pdf.cell(0, 8, "Liste des abréviations", align="L")
-    pdf.ln(8)
-    pdf._table_inner(["Abréviation", "Signification"], ABBR, [34, 132], 9.2)
-
-
 # ── rendu des blocs ─────────────────────────────────────
-def render_block(pdf: Report, kind, payload):
+def render_block(pdf: Report, item):
+    if isinstance(item, tuple) and len(item) == 4 and all(isinstance(e, str) for e in item):
+        pdf.h1(item)  # intercalaire éditorial (titre, eyebrow, épigraphe, chapeau)
+        return
+    kind, payload = item
     if kind == "h1":
         pdf.h1(payload)
     elif kind == "h2":
@@ -279,13 +301,26 @@ def render_block(pdf: Report, kind, payload):
     elif kind == "figure":
         fname, caption = payload[0], payload[1]
         width = payload[2] if len(payload) > 2 else 150
-        pdf.figure(os.path.join(FIGS, fname), caption, width)
+        baseline = payload[3] if len(payload) > 3 else None
+        source = payload[4] if len(payload) > 4 else None
+        pdf.figure(os.path.join(FIGS, fname), caption, width, baseline, source)
     elif kind == "code":
         title, text = payload
         pdf.code_block(title, text)
     elif kind == "info":
         title, text = payload
         pdf.info_box(title, text)
+    elif kind == "proof":
+        number, text, source = payload
+        pdf.proof(number, text, source)
+    elif kind == "capture":
+        ck, label, note = payload
+        pdf.capture(ck, label, note)
+    elif kind == "transition":
+        pdf.transition(payload)
+    elif kind == "abbr":
+        pdf._table_inner(["Abréviation", "Signification"], ABBR, [34, 132], 9.2)
+        pdf.ln(2)
     elif kind == "pagebreak":
         pdf.add_page()
 
@@ -303,12 +338,6 @@ def render_front_lists(pdf, toc, figs, tabs, codes):
     list_block(pdf, "Liste des figures", figs, "Figure")
     list_block(pdf, "Liste des tableaux", tabs, "Tableau")
     list_block(pdf, "Liste des extraits de code", codes, "Extrait", strip="Extrait — ")
-    abbr_block(pdf)
-
-
-BACK_INK = (43, 38, 32)
-BACK_PAPER = (235, 228, 214)
-BACK_MUT = (185, 172, 147)
 
 
 def back_cover(pdf: Report):
@@ -371,8 +400,8 @@ def back_cover(pdf: Report):
 
 
 def render_body(pdf):
-    for kind, payload in BODY:
-        render_block(pdf, kind, payload)
+    for item in BODY:
+        render_block(pdf, item)
 
 
 def _mk_link(pdf, dest):
@@ -413,7 +442,7 @@ def build():
     toc = [(l, ti, p + shift, "") for l, ti, p in toc_raw]
     figs = [(n, c, p + shift, "") for n, c, p in fig_raw]
     tabs = [(n, c, p + shift, "") for n, c, p in tab_raw]
-    codes = [(n, c, p + shift, "") for n, c, p in code_raw]
+    codes = [(n, c, p + shift, "") for n, c, p, _ in [(*c_, "") for c_ in code_raw]]
     # Passe 3 (destinations) : front réel sans liens + corps + dos
     r = Report()
     render_front_cover(r)
@@ -439,7 +468,6 @@ def build():
     assert pdf.page_no() == F, f"front instable: {pdf.page_no()} != {F}"
     render_body(pdf)
     back_cover(pdf)
-    # vérification : les pages relevées doivent matcher
     assert [p for _, _, p in pdf.toc_entries] == [p for _, _, p, _ in toc], "TOC instable"
     assert [p for _, _, p in pdf.fig_entries] == [p for _, _, p, _ in figs], "Fig instable"
     assert [p for _, _, p in pdf.tab_entries] == [p for _, _, p, _ in tabs], "Tab instable"

@@ -1,26 +1,40 @@
-"""Helpers matplotlib pour générer les figures du rapport (style unifié)."""
+"""Helpers matplotlib pour générer les figures du rapport (style unifié V14)."""
+import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 from matplotlib.patches import FancyBboxPatch, Ellipse, FancyArrowPatch, Circle, Rectangle
 import matplotlib.patheffects as pe
 
-INK = "#2B2620"
+INK = "#1F1B16"
 GOLD = "#8C6924"
 GOLD_L = "#C9A959"
 PAPER = "#FFFFFF"
-SHADE = "#F7F3EB"
-STONE = "#D8CFBE"
-MUTED = "#6E685A"
-BLUE = "#3E5C76"
-BLUE_L = "#DCE6EF"
-GREEN = "#5B7A5E"
-GREEN_L = "#E2EADF"
-RED = "#A34A3E"
-RED_L = "#F2DEDB"
+SHADE = "#F5EFE3"
+STONE = "#D6CBB8"
+MUTED = "#7A7062"
+BLUE = "#4E5C6B"
+BLUE_L = "#E3E9EE"
+GREEN = "#7D8C6F"
+GREEN_L = "#E9EDE2"
+RED = "#B0613F"
+RED_L = "#F3E4DB"
+SAGE = "#7D8C6F"
+TERRA = "#B0613F"
+
+_FONTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+for _f in ("Manrope-Regular.ttf", "Manrope-Bold.ttf"):
+    _p = os.path.join(_FONTS, _f)
+    if os.path.exists(_p):
+        try:
+            font_manager.fontManager.addfont(_p)
+        except Exception:
+            pass
 
 plt.rcParams.update({
-    "font.family": "DejaVu Sans",
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Manrope", "DejaVu Sans"],
     "font.size": 9,
     "axes.edgecolor": STONE,
 })

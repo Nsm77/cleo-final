@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv*/
+venv/
+*.egg-info/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# QA temporaire (planches de relecture, hors dépôt)
+# /tmp uniquement — rien à ignorer ici par défaut
